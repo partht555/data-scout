@@ -1,0 +1,155 @@
+﻿{
+    "query":  "food datasets for nutrition analysis",
+    "interpretedIntent":  {
+                              "task":  "food datasets for nutrition analysis",
+                              "keywords":  [
+                                               "food",
+                                               "datasets",
+                                               "for",
+                                               "nutrition",
+                                               "analysis"
+                                           ],
+                              "preferredFormats":  [
+                                                       "csv"
+                                                   ],
+                              "requiredColumns":  [
+
+                                                  ],
+                              "sources":  [
+                                              "kaggle"
+                                          ],
+                              "licenses":  [
+
+                                           ],
+                              "recency":  "any",
+                              "mode":  "keyword",
+                              "confidence":  null
+                          },
+    "results":  [
+                    {
+                        "datasetId":  "kaggle:utsavdey1410/food-nutrition-dataset",
+                        "title":  "Food Nutrition Dataset",
+                        "url":  "https://www.kaggle.com/datasets/utsavdey1410/food-nutrition-dataset",
+                        "source":  "kaggle",
+                        "summary":  "Food nutrition information including calories, protein, carbohydrates, and fat.",
+                        "tags":  [
+                                     "food",
+                                     "nutrition",
+                                     "health"
+                                 ],
+                        "files":  [
+                                      {
+                                          "name":  "food_nutrition.csv",
+                                          "format":  "csv",
+                                          "sizeBytes":  null
+                                      }
+                                  ],
+                        "schema":  [
+                                       {
+                                           "name":  "food_name",
+                                           "type":  "string",
+                                           "nullable":  false
+                                       },
+                                       {
+                                           "name":  "calories",
+                                           "type":  "number",
+                                           "nullable":  true
+                                       },
+                                       {
+                                           "name":  "protein",
+                                           "type":  "number",
+                                           "nullable":  true
+                                       },
+                                       {
+                                           "name":  "carbohydrates",
+                                           "type":  "number",
+                                           "nullable":  true
+                                       }
+                                   ],
+                        "matchedFields":  [
+                                              "title",
+                                              "tags",
+                                              "summary",
+                                              "schema.name",
+                                              "files.name"
+                                          ],
+                        "score":  1.0
+                    },
+                    {
+                        "datasetId":  "kaggle:iamsouravbanerjee/heart-attack-prediction-dataset",
+                        "title":  "Heart Attack Prediction Dataset",
+                        "url":  "https://www.kaggle.com/datasets/iamsouravbanerjee/heart-attack-prediction-dataset",
+                        "source":  "kaggle",
+                        "summary":  "Clinical health measurements for heart-disease prediction and analysis.",
+                        "tags":  [
+                                     "health",
+                                     "heart",
+                                     "classification"
+                                 ],
+                        "files":  [
+                                      {
+                                          "name":  "heart.csv",
+                                          "format":  "csv",
+                                          "sizeBytes":  null
+                                      }
+                                  ],
+                        "schema":  [
+                                       {
+                                           "name":  "age",
+                                           "type":  "integer",
+                                           "nullable":  false
+                                       },
+                                       {
+                                           "name":  "cholesterol",
+                                           "type":  "number",
+                                           "nullable":  true
+                                       },
+                                       {
+                                           "name":  "target",
+                                           "type":  "integer",
+                                           "nullable":  false
+                                       }
+                                   ],
+                        "matchedFields":  [
+                                              "summary"
+                                          ],
+                        "score":  0.17
+                    },
+                    {
+                        "datasetId":  "kaggle:ankurnapa/boston-housing",
+                        "title":  "Boston Housing Dataset",
+                        "url":  "https://www.kaggle.com/datasets/ankurnapa/boston-housing",
+                        "source":  "kaggle",
+                        "summary":  "Housing features and median home values for regression experiments.",
+                        "tags":  [
+                                     "housing",
+                                     "regression",
+                                     "real-estate"
+                                 ],
+                        "files":  [
+                                      {
+                                          "name":  "housing.csv",
+                                          "format":  "csv",
+                                          "sizeBytes":  null
+                                      }
+                                  ],
+                        "schema":  [
+                                       {
+                                           "name":  "median_value",
+                                           "type":  "number",
+                                           "nullable":  false
+                                       },
+                                       {
+                                           "name":  "rooms",
+                                           "type":  "number",
+                                           "nullable":  false
+                                       }
+                                   ],
+                        "matchedFields":  [
+                                              "summary"
+                                          ],
+                        "score":  0.09
+                    }
+                ],
+    "nextCursor":  null
+}

@@ -1,0 +1,8 @@
+{
+  "query": "food datasets for nutrition analysis",
+  "limit": 5,
+  "filters": {
+    "source": ["kaggle"],
+    "format": ["csv"]
+  }
+}

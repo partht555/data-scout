@@ -1,0 +1,32 @@
+{
+  "query": "food datasets for nutrition analysis",
+  "interpretedIntent": {
+    "task": "food datasets for nutrition analysis",
+    "keywords": ["food", "nutrition"],
+    "preferredFormats": ["csv"],
+    "requiredColumns": [],
+    "sources": ["kaggle"],
+    "licenses": [],
+    "recency": "any",
+    "mode": "keyword",
+    "confidence": null
+  },
+  "results": [
+    {
+      "datasetId": "kaggle:utsavdey1410/food-nutrition-dataset",
+      "title": "Food Nutrition Dataset",
+      "url": "https://www.kaggle.com/datasets/utsavdey1410/food-nutrition-dataset",
+      "source": "kaggle",
+      "summary": "Food nutrition information suitable for exploratory nutrition analysis.",
+      "tags": ["food", "nutrition", "health"],
+      "files": [{"name": "food_nutrition.csv", "format": "csv", "sizeBytes": null}],
+      "schema": [
+        {"name": "calories", "type": "number", "nullable": true},
+        {"name": "protein", "type": "number", "nullable": true}
+      ],
+      "matchedFields": ["title", "tags", "schema.name"],
+      "score": 0.95
+    }
+  ],
+  "nextCursor": null
+}
