@@ -26,6 +26,7 @@ PLAN_FIELDS = {
     "sources",
     "licenses",
     "recency",
+    "suggestedLimit",
     "confidence",
 }
 
@@ -53,6 +54,7 @@ class KeywordIntentParser:
             "sources": filters.get("source", []),
             "licenses": filters.get("license", []),
             "recency": "any",
+            "suggestedLimit": request["limit"],
             "mode": "keyword",
             "confidence": None,
         }
@@ -86,6 +88,7 @@ def build_model_input(request: dict[str, Any]) -> dict[str, Any]:
             "sources": "allowed source[]",
             "licenses": "string[]",
             "recency": "any | recent",
+            "suggestedLimit": "integer from 1 to 20",
             "confidence": "number from 0 to 1",
         },
     }
@@ -106,6 +109,9 @@ def validate_search_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
     recency = _validate_string(plan["recency"], "recency", 20).lower()
     if recency not in ALLOWED_RECENCY:
         raise SearchPlanValidationError("recency must be any or recent.")
+    suggested_limit = plan["suggestedLimit"]
+    if isinstance(suggested_limit, bool) or not isinstance(suggested_limit, int) or not 1 <= suggested_limit <= 20:
+        raise SearchPlanValidationError("suggestedLimit must be an integer from 1 to 20.")
     confidence = plan["confidence"]
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
         raise SearchPlanValidationError("confidence must be a number from 0 to 1.")
@@ -118,6 +124,7 @@ def validate_search_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         "sources": sources,
         "licenses": licenses,
         "recency": recency,
+        "suggestedLimit": suggested_limit,
         "mode": "bedrock",
         "confidence": float(confidence),
     }
@@ -128,6 +135,8 @@ def merge_explicit_filters(plan: dict[str, Any], request: dict[str, Any]) -> dic
 
     filters = request["filters"]
     merged = dict(plan)
+    if request.get("explicitLimit", False):
+        merged["suggestedLimit"] = request["limit"]
     if "format" in filters:
         merged["preferredFormats"] = filters["format"]
     if "source" in filters:
