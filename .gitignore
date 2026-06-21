@@ -34,3 +34,9 @@ samconfig.local.toml
 .DS_Store
 Thumbs.db
 data_curation_assistant/*
+
+# CDK
+infra/.venv/
+infra/cdk.out/
+infra/**/__pycache__/
+infra/**/*.pyc
