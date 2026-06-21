@@ -1,12 +1,14 @@
 import json
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from query_router.handler import lambda_handler  # noqa: E402
+from query_router.opensearch_repository import OpenSearchUnavailable  # noqa: E402
 
 
 class QueryRouterTests(unittest.TestCase):
@@ -64,6 +66,15 @@ class QueryRouterTests(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 400)
         self.assertIn("limit", json.loads(response["body"])["error"]["message"])
+
+    @patch.dict("os.environ", {"SEARCH_REPOSITORY": "opensearch", "OPENSEARCH_ENDPOINT": "https://example.com"})
+    @patch("query_router.handler.OpenSearchRepository.from_environment")
+    def test_returns_safe_503_when_opensearch_is_unavailable(self, repository):
+        repository.side_effect = OpenSearchUnavailable("offline")
+        response = lambda_handler({"body": json.dumps({"query": "nutrition datasets"})}, self.context)
+
+        self.assertEqual(response["statusCode"], 503)
+        self.assertEqual(json.loads(response["body"])["error"]["code"], "SEARCH_UNAVAILABLE")
 
 
 if __name__ == "__main__":

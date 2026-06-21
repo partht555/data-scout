@@ -7,6 +7,16 @@ Parameters:
     Type: String
     Default: hackathon
     AllowedValues: [hackathon]
+  OpenSearchEndpoint:
+    Type: String
+    Default: https://search-data-curator-datasets-u2fu34za3oamw362owrgkql4yu.us-east-1.es.amazonaws.com
+  OpenSearchDomainArn:
+    Type: String
+    Default: arn:aws:es:us-east-1:958975572378:domain/data-curator-datasets
+  EnableBedrockIntent:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
 
 Globals:
   Function:
@@ -54,6 +64,23 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: QueryOpenSearchRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [es:ESHttpGet, es:ESHttpPost]
+                Resource: !Sub '${OpenSearchDomainArn}/*'
+        - PolicyName: QueryBedrockIntent
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
       Tags:
         - Key: project
           Value: data-curator-assistant
@@ -69,6 +96,13 @@ Resources:
       CodeUri: src/
       Handler: query_router.handler.lambda_handler
       Role: !GetAtt QueryRouterExecutionRole.Arn
+      Environment:
+        Variables:
+          SEARCH_REPOSITORY: opensearch
+          OPENSEARCH_ENDPOINT: !Ref OpenSearchEndpoint
+          OPENSEARCH_INDEX: datasets-v1
+          ENABLE_BEDROCK_INTENT: !Ref EnableBedrockIntent
+          BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
       Events:
         Search:
           Type: HttpApi
