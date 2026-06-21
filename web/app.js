@@ -1,8 +1,6 @@
 const conversation = document.querySelector("#conversation");
 const form = document.querySelector("#search-form");
 const input = document.querySelector("#prompt-input");
-const dryRun = document.querySelector("#dry-run");
-const modeNote = document.querySelector("#mode-note");
 
 const catalog = [
   {
@@ -190,13 +188,10 @@ async function search(query) {
   const loading = appendMessage("assistant", '<p class="loading">Searching the catalog...</p>');
   try {
     let response;
-    if (dryRun.checked) response = localResponse(payload);
-    else {
-      if (!window.DATA_CURATOR_API_URL) throw new Error("No API endpoint is configured for this environment.");
-      const request = await fetch(window.DATA_CURATOR_API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      response = await request.json();
-      if (!request.ok) throw new Error(response.error?.message || "The search API returned an error.");
-    }
+    if (!window.DATA_CURATOR_API_URL) throw new Error("No API endpoint is configured for this environment.");
+    const request = await fetch(window.DATA_CURATOR_API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    response = await request.json();
+    if (!request.ok) throw new Error(response.error?.message || "The search API returned an error.");
     loading.querySelector(".bubble").innerHTML = renderResults(payload, response);
     conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   } catch (error) {
@@ -208,4 +203,3 @@ form.addEventListener("submit", (event) => { event.preventDefault(); const query
 input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
 document.querySelectorAll(".prompt").forEach((button) => button.addEventListener("click", () => { input.value = button.dataset.prompt; form.requestSubmit(); }));
 document.querySelector("#new-chat").addEventListener("click", () => { conversation.querySelectorAll(".message:not(.intro-message)").forEach((message) => message.remove()); input.focus(); });
-dryRun.addEventListener("change", () => { modeNote.textContent = dryRun.checked ? "Using a local response preview. No network request is sent." : "Requests are sent to the configured API Gateway endpoint."; });
