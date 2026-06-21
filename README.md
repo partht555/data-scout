@@ -1,21 +1,25 @@
-﻿# Data Curator Assistant — Application Layer Implementation
+# Dataset Scout
 
-## Deployed mock-search API
+Dataset Scout is a chat-based dataset discovery assistant. It interprets a
+plain-language request with Bedrock, searches an OpenSearch index of enriched
+dataset metadata, and returns grounded Kaggle recommendations.
+
+## Search API
 
 `POST https://lepdzanhh1.execute-api.us-east-1.amazonaws.com/v1/datasets/search`
 
-The deployed `data-curator-assistant-mock` stack provides the Lambda, API Gateway HTTP endpoint, IAM execution role, and CloudWatch log group. It returns deterministic Kaggle-style mock records until the background layer’s OpenSearch index is available.
+The deployed Dataset Scout stack provides API Gateway, Lambda, Amazon Bedrock,
+CloudWatch logs, and IAM-signed access to the background-owned OpenSearch index.
 
 ## CLI
-
-The CLI uses only the documented API contract:
 
 ```powershell
 $env:DATA_CURATOR_API_URL = 'https://lepdzanhh1.execute-api.us-east-1.amazonaws.com/v1/datasets/search'
 python search_datasets.py 'food datasets for nutrition analysis' --source kaggle --format csv
 ```
 
-Use `--json` to print the full API response. Run `python -m unittest discover -s tests -v` for the local test suite.
+Use `--json` to print the full response. Run `python -m unittest discover -s tests -v`
+for the local test suite.
 
 ## Read-only ranking evaluation
 

@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Small managed OpenSearch development domain for the Data Curator index.
+Description: Small managed OpenSearch development domain for the Dataset Scout index.
 
 Parameters:
   DomainName:
@@ -55,7 +55,7 @@ Resources:
             Resource: !Sub 'arn:${AWS::Partition}:es:${AWS::Region}:${AWS::AccountId}:domain/${DomainName}/*'
       Tags:
         - Key: project
-          Value: data-curator-assistant
+          Value: dataset-scout
         - Key: environment
           Value: hackathon
         - Key: owner

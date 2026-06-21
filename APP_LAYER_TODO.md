@@ -49,7 +49,7 @@ User query
 - [x] Configure `POST /v1/datasets/search` to invoke the Lambda.
 - [x] Deploy with the local AWS SSO profile.
 - [x] Invoke the deployed endpoint from the CLI and save a successful example response.
-- [x] Add resource tags: `project=data-curator-assistant`, `environment=hackathon`, and `owner=team`.
+- [x] Add resource tags: `project=dataset-scout`, `environment=hackathon`, and `owner=team`.
 
 ## Phase 4 - Minimal client
 
