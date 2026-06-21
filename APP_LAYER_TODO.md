@@ -77,10 +77,10 @@ User query
 
 ## Phase 6 - Add Bedrock intent understanding
 
-- [ ] Define the strict JSON search-plan schema produced by Claude.
-- [ ] Add a Bedrock adapter behind an intent-parser interface.
-- [ ] Validate model output; never let model output become raw OpenSearch DSL.
-- [ ] Fall back to keyword search when Bedrock is unavailable or output is invalid.
+- [x] Define the strict JSON search-plan schema produced by Claude.
+- [x] Add a Bedrock adapter behind an intent-parser interface.
+- [x] Validate model output; never let model output become raw OpenSearch DSL.
+- [x] Fall back to keyword search when Bedrock is unavailable or output is invalid.
 - [ ] Add CloudWatch-safe logging for request ID, latency, result count, and fallback mode.
 
 ## Coordination contract with the background layer
