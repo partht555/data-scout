@@ -38,7 +38,8 @@ function appendMessage(kind, content) {
 }
 
 function renderResults(payload, response) {
-  const plan = [`query: ${payload.query}`, `limit: ${payload.limit}`, ...Object.entries(payload.filters || {}).map(([key, value]) => `${key}: ${value.join(",")}`)];
+  const intent = response.interpretedIntent || {};
+  const plan = [`query: ${payload.query}`, `limit: ${payload.limit}`, `mode: ${intent.mode || "dry-run"}`, ...(intent.preferredFormats || payload.filters?.format || []).map((value) => `format: ${value}`), ...(intent.sources || payload.filters?.source || []).map((value) => `source: ${value}`), ...(intent.requiredColumns || []).map((value) => `field: ${value}`)];
   if (!response.results.length) return `<p>I couldn't find a close match in this preview catalog.</p><p class="result-summary">Try broadening the request or remove a filter.</p><div class="plan">${plan.map((item) => `<span>${item}</span>`).join("")}</div>`;
   return `<p>I found ${response.results.length} dataset${response.results.length === 1 ? "" : "s"}. Here's the request I prepared:</p><div class="plan">${plan.map((item) => `<span>${item}</span>`).join("")}</div><div class="result-list">${response.results.map((item) => `<a class="result" href="${item.url}" target="_blank" rel="noreferrer"><div class="result-top"><span>${item.title}</span><span class="score">${item.score.toFixed(2)}</span></div><p class="result-summary">${item.summary}</p><div class="result-meta">${item.files.join(", ")} · ${item.schema.join(", ")} · ${item.matchedFields.join(", ")}</div></a>`).join("")}</div>`;
 }

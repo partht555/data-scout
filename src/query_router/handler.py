@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+import os
+import time
 from typing import Any
 
+from .bedrock_adapter import BedrockIntentInvoker
 from .intent_parser import interpret_request
+from .opensearch_repository import InvalidCursor, OpenSearchRepository, OpenSearchUnavailable
 
 
 DEFAULT_LIMIT = 5
@@ -17,6 +22,8 @@ ALLOWED_SOURCES = {"kaggle"}
 ALLOWED_FORMATS = {"csv", "json", "parquet", "tsv", "xlsx"}
 REQUEST_FIELDS = {"query", "limit", "cursor", "filters"}
 FILTER_FIELDS = {"source", "format", "license"}
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class RequestValidationError(ValueError):
@@ -27,6 +34,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Validate an API Gateway proxy event and return the search envelope."""
 
     request_id = _request_id(event, context)
+    started = time.perf_counter()
     try:
         payload = _parse_body(event)
         request = _validate_request(payload)
@@ -39,19 +47,42 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             },
         )
 
-    # Import lazily to keep request validation independently reusable and to
-    # avoid a module cycle while the temporary mock search reuses helpers here.
-    from .search_handler import _search
+    try:
+        intent = interpret_request(request, _intent_parser())
+        results, next_cursor, repository = _search(request, intent)
+    except InvalidCursor as error:
+        return _response(400, {"error": {"code": "INVALID_REQUEST", "message": str(error)}, "requestId": request_id})
+    except OpenSearchUnavailable:
+        _log_search(request_id, started, "opensearch", "unavailable", 0, False)
+        return _response(503, {"error": {"code": "SEARCH_UNAVAILABLE", "message": "Dataset search is temporarily unavailable."}, "requestId": request_id})
 
-    return _response(
-        200,
-        {
-            "query": request["query"],
-            "interpretedIntent": interpret_request(request),
-            "results": _search(request),
-            "nextCursor": None,
-        },
-    )
+    _log_search(request_id, started, repository, intent["mode"], len(results), intent["mode"] == "keyword" and _bedrock_enabled())
+    return _response(200, {"query": request["query"], "interpretedIntent": intent, "results": results, "nextCursor": next_cursor})
+
+
+def _search(request: dict[str, Any], intent: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None, str]:
+    if os.getenv("SEARCH_REPOSITORY", "mock") == "opensearch":
+        results, cursor = OpenSearchRepository.from_environment().search(request, intent)
+        return results, cursor, "opensearch"
+    from .search_handler import _search as mock_search
+
+    return mock_search(request), None, "mock"
+
+
+def _intent_parser() -> Any:
+    if _bedrock_enabled():
+        from .intent_parser import BedrockIntentParser
+
+        return BedrockIntentParser(BedrockIntentInvoker.from_environment())
+    return None
+
+
+def _bedrock_enabled() -> bool:
+    return os.getenv("ENABLE_BEDROCK_INTENT", "false").lower() == "true"
+
+
+def _log_search(request_id: str, started: float, repository: str, mode: str, result_count: int, fallback: bool) -> None:
+    logger.info(json.dumps({"event": "dataset_search", "requestId": request_id, "latencyMs": round((time.perf_counter() - started) * 1000), "repository": repository, "interpretationMode": mode, "fallback": fallback, "resultCount": result_count}))
 
 
 def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
