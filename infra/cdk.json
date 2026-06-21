@@ -1,5 +1,5 @@
 {
-  "app": "python3 app.py",
+  "app": "node run_cdk_app.js",
   "context": {
     "@aws-cdk/aws-dynamodb:defaultEncryptionKey": false
   }
