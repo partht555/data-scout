@@ -65,7 +65,7 @@ function localResponse(payload) {
   return { interpretedIntent: { mode: "dry-run", keywords: lower.split(/\s+/), suggestedLimit: 5 }, results: results.slice(0, 5) };
 }
 
-function appendMessage(kind, content) {
+function appendMessage(kind, content, { scroll = true } = {}) {
   const article = document.createElement("article");
   article.className = `message ${kind}-message`;
   if (kind === "assistant") {
@@ -77,8 +77,13 @@ function appendMessage(kind, content) {
     article.append(bubble);
   }
   conversation.append(article);
-  conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
+  if (scroll) conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   return article;
+}
+
+function scrollMessageToTop(message) {
+  const top = conversation.scrollTop + message.getBoundingClientRect().top - conversation.getBoundingClientRect().top - 12;
+  conversation.scrollTo({ top, behavior: "smooth" });
 }
 
 function renderResults(payload, response) {
@@ -197,7 +202,7 @@ async function search(query) {
   const payload = buildPayload(query);
   ensureActiveChat(query);
   appendMessage("user", query);
-  const loading = appendMessage("assistant", '<p class="loading">Searching the catalog...</p>');
+  const loading = appendMessage("assistant", '<p class="loading">Searching the catalog...</p>', { scroll: false });
   try {
     let response;
     if (!window.DATA_CURATOR_API_URL) throw new Error("No API endpoint is configured for this environment.");
@@ -206,11 +211,12 @@ async function search(query) {
     if (!request.ok) throw new Error(response.error?.message || "The search API returned an error.");
     loading.querySelector(".bubble").innerHTML = renderResults(payload, response);
     rememberExchange({ query, response });
-    conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
+    scrollMessageToTop(loading);
   } catch (error) {
     const message = error instanceof Error ? error.message : "The search could not be completed.";
     loading.querySelector(".bubble").innerHTML = renderError(message);
     rememberExchange({ query, error: message });
+    scrollMessageToTop(loading);
   }
 }
 
@@ -289,12 +295,13 @@ function restoreActiveChat() {
   const chat = activeChat();
   if (!chat) return;
   for (const exchange of chat.exchanges) {
-    appendMessage("user", exchange.query);
+    appendMessage("user", exchange.query, { scroll: false });
     const content = exchange.response
       ? renderResults(buildPayload(exchange.query), exchange.response)
       : renderError(exchange.error);
-    appendMessage("assistant", content);
+    appendMessage("assistant", content, { scroll: false });
   }
+  conversation.scrollTo({ top: 0 });
 }
 
 function renderChatList() {
