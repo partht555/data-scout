@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Small managed OpenSearch development domain for the Data Curator index.
+
+Parameters:
+  DomainName:
+    Type: String
+    Default: data-curator-datasets
+  IndexWorkerRoleArn:
+    Type: String
+    Description: Lambda role allowed to create and write the datasets-v1 index.
+  QueryRouterRoleArn:
+    Type: String
+    Description: Query Lambda role allowed to search the datasets-v1 index.
+
+Resources:
+  DatasetSearchDomain:
+    Type: AWS::OpenSearchService::Domain
+    Properties:
+      DomainName: !Ref DomainName
+      EngineVersion: OpenSearch_2.19
+      ClusterConfig:
+        InstanceType: t3.small.search
+        InstanceCount: 1
+        DedicatedMasterEnabled: false
+        ZoneAwarenessEnabled: false
+      EBSOptions:
+        EBSEnabled: true
+        VolumeType: gp3
+        VolumeSize: 10
+      EncryptionAtRestOptions:
+        Enabled: true
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      DomainEndpointOptions:
+        EnforceHTTPS: true
+        TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+      AccessPolicies:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref IndexWorkerRoleArn
+            Action:
+              - es:ESHttpDelete
+              - es:ESHttpGet
+              - es:ESHttpPost
+              - es:ESHttpPut
+            Resource: !Sub 'arn:${AWS::Partition}:es:${AWS::Region}:${AWS::AccountId}:domain/${DomainName}/*'
+          - Effect: Allow
+            Principal:
+              AWS: !Ref QueryRouterRoleArn
+            Action:
+              - es:ESHttpGet
+              - es:ESHttpPost
+            Resource: !Sub 'arn:${AWS::Partition}:es:${AWS::Region}:${AWS::AccountId}:domain/${DomainName}/*'
+      Tags:
+        - Key: project
+          Value: data-curator-assistant
+        - Key: environment
+          Value: hackathon
+        - Key: owner
+          Value: team
+
+Outputs:
+  DomainEndpoint:
+    Description: Signed HTTPS endpoint for the datasets-v1 index.
+    Value: !GetAtt DatasetSearchDomain.DomainEndpoint
+  DomainArn:
+    Value: !GetAtt DatasetSearchDomain.Arn
