@@ -25,6 +25,10 @@ class KaggleAuthError(RuntimeError):
     """Non-retryable: credentials are missing or revoked."""
 
 
+class KaggleRateLimitError(RuntimeError):
+    """Retryable at SFN level: Kaggle returned 429 after exhausting the in-Lambda retry."""
+
+
 @dataclass
 class KaggleClient:
     _auth: HTTPBasicAuth
@@ -74,7 +78,9 @@ class KaggleClient:
                     logger.warning(f"Kaggle 429 rate limit; sleeping {retry_after}s")
                     time.sleep(retry_after)
                     continue
-                resp.raise_for_status()
+                raise KaggleRateLimitError(
+                    f"Kaggle persistent rate limit after retry: {resp.text[:200]}"
+                )
             resp.raise_for_status()
             return resp.json()
         raise RuntimeError("Unreachable retry loop exit")
