@@ -1,6 +1,6 @@
 ﻿AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Dataset Scout dataset-search API
+Description: Data Scout dataset-search API
 
 Parameters:
   Environment:
@@ -25,7 +25,7 @@ Globals:
     MemorySize: 256
     Tracing: Active
     Tags:
-      project: dataset-scout
+      project: data-scout
       environment: !Ref Environment
       owner: team
 
@@ -46,7 +46,7 @@ Resources:
         ThrottlingBurstLimit: 10
         ThrottlingRateLimit: 5
       Tags:
-        project: dataset-scout
+        project: data-scout
         environment: !Ref Environment
         owner: team
 
@@ -83,7 +83,7 @@ Resources:
                   - arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
       Tags:
         - Key: project
-          Value: dataset-scout
+          Value: data-scout
         - Key: environment
           Value: !Ref Environment
         - Key: owner
@@ -119,7 +119,7 @@ Resources:
       RetentionInDays: 14
       Tags:
         - Key: project
-          Value: dataset-scout
+          Value: data-scout
         - Key: environment
           Value: !Ref Environment
         - Key: owner

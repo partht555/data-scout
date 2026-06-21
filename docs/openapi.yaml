@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Dataset Scout Search API
+  title: Data Scout Search API
   version: 0.1.0
   description: Read-only dataset discovery API for the hackathon POC.
 paths:

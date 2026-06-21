@@ -1,6 +1,6 @@
-# Dataset Scout
+# Data Scout
 
-Dataset Scout is a chat-based dataset discovery assistant. It interprets a
+Data Scout is a chat-based dataset discovery assistant. It interprets a
 plain-language request with Bedrock, searches an OpenSearch index of enriched
 dataset metadata, and returns grounded Kaggle recommendations.
 
@@ -8,7 +8,7 @@ dataset metadata, and returns grounded Kaggle recommendations.
 
 `POST https://lepdzanhh1.execute-api.us-east-1.amazonaws.com/v1/datasets/search`
 
-The deployed Dataset Scout stack provides API Gateway, Lambda, Amazon Bedrock,
+The deployed Data Scout stack provides API Gateway, Lambda, Amazon Bedrock,
 CloudWatch logs, and IAM-signed access to the background-owned OpenSearch index.
 
 ## CLI
