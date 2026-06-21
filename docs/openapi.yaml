@@ -1,0 +1,159 @@
+openapi: 3.0.3
+info:
+  title: Data Curator Assistant Search API
+  version: 0.1.0
+  description: Read-only dataset discovery API for the hackathon POC.
+paths:
+  /v1/datasets/search:
+    post:
+      operationId: searchDatasets
+      summary: Find datasets for a natural-language task
+      description: POST is used because search input has structured filters and will outgrow a practical URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search completed; an empty results list means no match.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: The request body is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: A search dependency is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 3
+          maxLength: 1000
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+        cursor:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        filters:
+          $ref: '#/components/schemas/SearchFilters'
+    SearchFilters:
+      type: object
+      additionalProperties: false
+      description: Optional explicit constraints. Omitted filters never restrict results.
+      properties:
+        source:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [kaggle]
+        format:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [csv, json, parquet, tsv, xlsx]
+        license:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            maxLength: 100
+    SearchResponse:
+      type: object
+      additionalProperties: false
+      required: [query, interpretedIntent, results, nextCursor]
+      properties:
+        query:
+          type: string
+        interpretedIntent:
+          $ref: '#/components/schemas/InterpretedIntent'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DatasetRecommendation'
+        nextCursor:
+          type: string
+          nullable: true
+    InterpretedIntent:
+      type: object
+      additionalProperties: false
+      required: [task, keywords, preferredFormats, requiredColumns, sources, licenses, recency, mode, confidence]
+      properties:
+        task: {type: string}
+        keywords: {type: array, items: {type: string}}
+        preferredFormats: {type: array, items: {type: string}}
+        requiredColumns: {type: array, items: {type: string}}
+        sources: {type: array, items: {type: string}}
+        licenses: {type: array, items: {type: string}}
+        recency: {type: string, enum: [any, recent]}
+        mode: {type: string, enum: [keyword, bedrock]}
+        confidence: {type: number, minimum: 0, maximum: 1, nullable: true}
+    DatasetRecommendation:
+      type: object
+      additionalProperties: false
+      required: [datasetId, title, url, source, summary, tags, files, schema, matchedFields, score]
+      properties:
+        datasetId: {type: string}
+        title: {type: string}
+        url: {type: string, format: uri}
+        source: {type: string, enum: [kaggle]}
+        summary: {type: string}
+        tags: {type: array, items: {type: string}}
+        files:
+          type: array
+          items: {$ref: '#/components/schemas/DatasetFile'}
+        schema:
+          type: array
+          items: {$ref: '#/components/schemas/SchemaField'}
+        matchedFields: {type: array, items: {type: string}}
+        score: {type: number, minimum: 0, maximum: 1}
+    DatasetFile:
+      type: object
+      additionalProperties: false
+      required: [name, format]
+      properties:
+        name: {type: string}
+        format: {type: string}
+        sizeBytes: {type: integer, minimum: 0, nullable: true}
+    SchemaField:
+      type: object
+      additionalProperties: false
+      required: [name, type, nullable]
+      properties:
+        name: {type: string}
+        type: {type: string}
+        nullable: {type: boolean}
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, requestId]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: {type: string, enum: [INVALID_REQUEST, SEARCH_UNAVAILABLE]}
+            message: {type: string}
+        requestId: {type: string}

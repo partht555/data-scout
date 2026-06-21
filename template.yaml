@@ -1,0 +1,100 @@
+﻿AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Data Curator Assistant mock dataset-search API
+
+Parameters:
+  Environment:
+    Type: String
+    Default: hackathon
+    AllowedValues: [hackathon]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 256
+    Tracing: Active
+    Tags:
+      project: data-curator-assistant
+      environment: !Ref Environment
+      owner: team
+
+Resources:
+  SearchHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      CorsConfiguration:
+        AllowOrigins:
+          - http://127.0.0.1:4173
+          - http://localhost:4173
+        AllowHeaders:
+          - content-type
+        AllowMethods:
+          - POST
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+      Tags:
+        project: data-curator-assistant
+        environment: !Ref Environment
+        owner: team
+
+  QueryRouterExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-query-router'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Tags:
+        - Key: project
+          Value: data-curator-assistant
+        - Key: environment
+          Value: !Ref Environment
+        - Key: owner
+          Value: team
+
+  QueryRouterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-query-router'
+      CodeUri: src/
+      Handler: query_router.handler.lambda_handler
+      Role: !GetAtt QueryRouterExecutionRole.Arn
+      Events:
+        Search:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SearchHttpApi
+            Path: /v1/datasets/search
+            Method: POST
+
+  QueryRouterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DependsOn: QueryRouterFunction
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${QueryRouterFunction}'
+      RetentionInDays: 14
+      Tags:
+        - Key: project
+          Value: data-curator-assistant
+        - Key: environment
+          Value: !Ref Environment
+        - Key: owner
+          Value: team
+
+Outputs:
+  SearchApiUrl:
+    Description: POST mock dataset-search API endpoint
+    Value: !Sub 'https://${SearchHttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1/datasets/search'
+  QueryRouterFunctionName:
+    Description: Lambda function name
+    Value: !Ref QueryRouterFunction

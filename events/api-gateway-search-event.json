@@ -1,0 +1,10 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /v1/datasets/search",
+  "rawPath": "/v1/datasets/search",
+  "requestContext": {
+    "requestId": "local-api-gateway-event"
+  },
+  "body": "{\"query\":\"food datasets for nutrition analysis\",\"limit\":5,\"filters\":{\"source\":[\"kaggle\"],\"format\":[\"csv\"]}}",
+  "isBase64Encoded": false
+}

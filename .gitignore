@@ -1,1 +1,36 @@
+# Python bytecode, test output, and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.aws/
+.aws-local.env
+*.pem
+*.key
+
+# AWS SAM build and local invocation artifacts
+.aws-sam/
+.sam-cache/
+samconfig.local.toml
+
+# Editor and operating-system noise
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
 data_curation_assistant/*
