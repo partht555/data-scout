@@ -1,1 +1,7 @@
 data_curation_assistant/*
+
+# CDK
+infra/.venv/
+infra/cdk.out/
+infra/**/__pycache__/
+infra/**/*.pyc
