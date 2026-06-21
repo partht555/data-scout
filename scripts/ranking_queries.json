@@ -1,0 +1,44 @@
+[
+  {
+    "name": "housing prices",
+    "query": "housing prices",
+    "expectedDatasetIds": [
+      "kaggle:robikscube/zillow-home-value-index",
+      "kaggle:adrianjuliusaluoch/rental-market-in-kenya"
+    ]
+  },
+  {
+    "name": "NBA datasets",
+    "query": "NBA datasets",
+    "expectedDatasetIds": [
+      "kaggle:eduardopalmieri/nba-player-stats-season-2526",
+      "kaggle:chrismunch/nba-game-team-statistics"
+    ]
+  },
+  {
+    "name": "food nutrition",
+    "query": "food datasets for nutrition analysis",
+    "expectedDatasetIds": [
+      "kaggle:furkanenesdavarciolu/fast-food-menu-prices-and-nutrition-in-turkey-2026"
+    ]
+  },
+  {
+    "name": "Formula 1 strategy",
+    "query": "Formula 1 race strategy datasets",
+    "expectedDatasetIds": [
+      "kaggle:jtrotman/formula-1-race-data",
+      "kaggle:yajatpawar/formula-1-strategy-dataset"
+    ]
+  },
+  {
+    "name": "retail sales forecasting",
+    "query": "retail sales forecasting",
+    "expectedDatasetIds": []
+  },
+  {
+    "name": "out of catalog",
+    "query": "quantum entanglement qubits",
+    "expectedDatasetIds": [],
+    "expectEmpty": true
+  }
+]

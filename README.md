@@ -16,3 +16,17 @@ python search_datasets.py 'food datasets for nutrition analysis' --source kaggle
 ```
 
 Use `--json` to print the full API response. Run `python -m unittest discover -s tests -v` for the local test suite.
+
+## Read-only ranking evaluation
+
+Compare the current lexical query builder with a phrase-aware candidate without
+changing Lambda, DynamoDB, or OpenSearch:
+
+```powershell
+$env:OPENSEARCH_ENDPOINT = 'https://your-domain.us-east-1.es.amazonaws.com'
+$env:AWS_PROFILE = 'AdministratorAccess-958975572378'
+python scripts/evaluate_ranking.py
+```
+
+The representative cases are in `scripts/ranking_queries.json`. The harness
+uses deterministic keyword plans to avoid Bedrock variability and cost.

@@ -22,7 +22,7 @@ class FakeClient:
 
 class BedrockAdapterTests(unittest.TestCase):
     def test_sends_only_search_plan_input_and_parses_json(self):
-        client = FakeClient('```json\n{"task":"racing","keywords":[],"preferredFormats":[],"requiredColumns":[],"sources":[],"licenses":[],"recency":"any","confidence":0.8}\n```')
+        client = FakeClient('```json\n{"task":"racing","keywords":[],"preferredFormats":[],"requiredColumns":[],"sources":[],"licenses":[],"recency":"any","suggestedLimit":5,"confidence":0.8}\n```')
         result = BedrockIntentInvoker(client)(build_model_input({"query": "racing data", "filters": {}}))
 
         self.assertEqual(result["task"], "racing")

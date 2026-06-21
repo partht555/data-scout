@@ -102,6 +102,9 @@ def build_search_body(request: dict[str, Any], intent: dict[str, Any]) -> dict[s
     ]
     for column in intent.get("requiredColumns", []):
         should.append({"match": {"schema.name": {"query": column, "boost": 3}}})
+    for request_field, intent_field, index_field in (("source", "sources", "source"), ("format", "preferredFormats", "files.format"), ("license", "licenses", "license")):
+        if not request["filters"].get(request_field) and intent.get(intent_field):
+            should.append({"constant_score": {"filter": {"terms": {index_field: intent[intent_field]}}, "boost": 0.5}})
     body: dict[str, Any] = {
         "size": request["limit"] + 1,
         "_source": True,
