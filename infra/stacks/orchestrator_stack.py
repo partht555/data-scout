@@ -156,6 +156,7 @@ _ASL = json.dumps({
                 "crawlerArn.$": "$.crawlerArn",
                 "startPage": 1,
                 "batchCount": 0,
+                "nextCursor": None,
             },
             "Iterator": {
                 "StartAt": "FetchBatch",
@@ -176,6 +177,7 @@ _ASL = json.dumps({
                             "errors.$": "$.Payload.errors",
                             "lastPageFetched.$": "$.Payload.lastPageFetched",
                             "hitEndOfResults.$": "$.Payload.hitEndOfResults",
+                            "nextCursor.$": "$.Payload.nextCursor",
                         },
                         "ResultPath": "$.batchResult",
                         "Retry": [
@@ -243,6 +245,7 @@ _ASL = json.dumps({
                             "crawlerArn.$": "$.crawlerArn",
                             "startPage.$": "States.MathAdd($.batchResult.lastPageFetched, 1)",
                             "batchCount.$": "States.MathAdd($.batchCount, 1)",
+                            "nextCursor.$": "$.batchResult.nextCursor",
                         },
                         "Next": "FetchBatch",
                     },

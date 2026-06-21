@@ -7,10 +7,12 @@ package small and avoid any initialization side-effects.
 import json
 import logging
 import math
+import re
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Optional
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -39,33 +41,41 @@ class HFClient:
     def anonymous(cls) -> "HFClient":
         return cls(_token=None)
 
-    def list_datasets(self, category: str, limit: int, page: int = 1) -> list[dict]:
+    def list_datasets(
+        self, category: str, limit: int, page: int = 1, cursor: str | None = None
+    ) -> tuple[list[dict], str | None]:
         """
         Fetch a single page of datasets from the HF Hub API.
 
-        category="" fetches all datasets with no filter.
-        page is 1-indexed; converted to offset internally.
-        Returns a list of raw dataset dicts.
+        Uses cursor-based pagination via the Link response header.
+        The `page` parameter is ignored — pass `cursor` from the previous
+        call to advance; omit it (or pass None) to start from the beginning.
+
+        Returns (datasets, next_cursor). next_cursor is None when there are
+        no more results.
         """
         limit = min(limit, HF_DATASETS_LIMIT)
-        offset = (page - 1) * limit
 
         params: dict = {
             "limit": limit,
-            "offset": offset,
             "sort": "downloads",
             "direction": "-1",
             "full": "true",
         }
+        if cursor:
+            params["cursor"] = cursor
         if category:
             params["search"] = category
 
-        result = self._call_with_retry(f"{HF_API_BASE}/datasets", params=params)
-        return result if isinstance(result, list) else []
+        datasets, next_cursor = self._call_with_retry(f"{HF_API_BASE}/datasets", params=params)
+        return datasets, next_cursor
 
-    def _call_with_retry(self, url: str, **kwargs) -> Any:
+    def _call_with_retry(self, url: str, **kwargs) -> tuple[Any, str | None]:
         """
         GET url with one retry on 429.
+
+        Returns (json_body, next_cursor) where next_cursor is parsed from the
+        Link response header (HF cursor-based pagination) or None if absent.
 
         - 401/403: raise RuntimeError (non-retryable)
         - 429: sleep Retry-After (default 60s), retry once, then raise HFRateLimitError
@@ -91,7 +101,8 @@ class HFClient:
                     f"HF persistent rate limit after retry: {resp.text[:200]}"
                 )
             resp.raise_for_status()
-            return resp.json()
+            next_cursor = _parse_link_cursor(resp.headers.get("Link", ""))
+            return resp.json(), next_cursor
         raise RuntimeError("Unreachable retry loop exit")
 
     @staticmethod
@@ -155,6 +166,16 @@ class HFClient:
             "GSI1SK": last_updated_at,
         }
         return record
+
+
+def _parse_link_cursor(link_header: str) -> str | None:
+    """Extract the cursor query-param from a Link: <url>; rel="next" header."""
+    match = re.search(r'<([^>]+)>;\s*rel="next"', link_header)
+    if not match:
+        return None
+    qs = parse_qs(urlparse(match.group(1)).query)
+    cursors = qs.get("cursor")
+    return cursors[0] if cursors else None
 
 
 def _compute_usability_rating(downloads: int, likes: int) -> Decimal:

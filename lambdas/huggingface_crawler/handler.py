@@ -5,10 +5,11 @@ Input (from Step Functions orchestrator):
     {
         "runId":         str,
         "source":        "huggingface",
-        "category":      str,   # "" means no search filter (crawl all)
-        "limitPerPage":  int,   # datasets per HF API request (max 100)
-        "startPage":     int,   # first page to fetch (1-indexed; offset = (page-1)*limit)
-        "pagesPerBatch": int    # number of consecutive pages to process (default: 5)
+        "category":      str,        # "" means no search filter (crawl all)
+        "limitPerPage":  int,        # datasets per HF API request (max 100)
+        "startPage":     int,        # used only to satisfy the orchestrator schema
+        "pagesPerBatch": int,        # number of consecutive pages to process (default: 5)
+        "nextCursor":    str | None  # HF pagination cursor from previous batch; null to start
     }
 
 Output:
@@ -18,12 +19,14 @@ Output:
         "enrichmentFailures": int,
         "errors":            list[str],
         "lastPageFetched":   int,
-        "hitEndOfResults":   bool
+        "hitEndOfResults":   bool,
+        "nextCursor":        str | None  # cursor for the next batch; null when exhausted
     }
 """
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 
 import boto3
@@ -77,6 +80,7 @@ def handler(event: dict, context) -> dict:
     limit_per_page: int = int(event["limitPerPage"])
     start_page: int = int(event["startPage"])
     pages_per_batch: int = int(event.get("pagesPerBatch", 5))
+    incoming_cursor: str | None = event.get("nextCursor")
 
     if source != "huggingface":
         raise ValueError(f"This Lambda only handles source='huggingface', got {source!r}")
@@ -91,6 +95,7 @@ def handler(event: dict, context) -> dict:
         "limitPerPage": limit_per_page,
         "startPage": start_page,
         "pagesPerBatch": pages_per_batch,
+        "hasCursor": incoming_cursor is not None,
     }))
 
     client = _get_hf_client()
@@ -103,12 +108,18 @@ def handler(event: dict, context) -> dict:
     errors: list[str] = []
     last_page_fetched = start_page - 1
     hit_end_of_results = False
+    current_cursor: str | None = incoming_cursor
+    next_cursor: str | None = incoming_cursor
 
-    for page in range(start_page, start_page + pages_per_batch):
-        datasets = client.list_datasets(category=category, limit=limit_per_page, page=page)
-        logger.info(
-            f"Fetched {len(datasets)} datasets - category={category or '<all>'} page={page}"
+    for batch_page in range(pages_per_batch):
+        datasets, next_cursor = client.list_datasets(
+            category=category, limit=limit_per_page, cursor=current_cursor
         )
+        logger.info(
+            f"Fetched {len(datasets)} datasets - category={category or '<all>'} "
+            f"batch_page={batch_page + 1}/{pages_per_batch} hasCursor={current_cursor is not None}"
+        )
+        current_cursor = next_cursor
 
         for raw in datasets:
             dataset_id = None
@@ -132,15 +143,17 @@ def handler(event: dict, context) -> dict:
                 record.pop("useCaseSummary", None)
                 enrichment_failures += 1
 
+            time.sleep(0.3)
+
             written = writer.upsert(record)
             if written:
                 records_written += 1
             else:
                 records_skipped += 1
 
-        last_page_fetched = page
+        last_page_fetched = start_page + batch_page
 
-        if len(datasets) < limit_per_page:
+        if len(datasets) < limit_per_page or next_cursor is None:
             hit_end_of_results = True
             break
 
@@ -151,6 +164,7 @@ def handler(event: dict, context) -> dict:
         "errors": errors,
         "lastPageFetched": last_page_fetched,
         "hitEndOfResults": hit_end_of_results,
+        "nextCursor": next_cursor,
     }
     logger.info(json.dumps({"event": "crawl_end", "runId": run_id, **outcome}))
     return outcome
