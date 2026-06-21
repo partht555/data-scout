@@ -25,8 +25,45 @@ _ASL = json.dumps({
         "Crawler orchestrator — fans out category crawls, loops over page batches, "
         "and aggregates per-category outcomes."
     ),
-    "StartAt": "ValidateInput",
+    "StartAt": "SetCrawlerArn",
     "States": {
+
+        # ── Resolve the crawler Lambda ARN from source ──────────────────────
+        # Injects crawlerArn into state before validation so FetchBatch can
+        # dispatch dynamically without hard-coding a single Lambda ARN.
+        "SetCrawlerArn": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.source",
+                    "StringEquals": "kaggle",
+                    "Next": "SetKaggleArn",
+                },
+                {
+                    "Variable": "$.source",
+                    "StringEquals": "huggingface",
+                    "Next": "SetHuggingFaceArn",
+                },
+            ],
+            "Default": "FailUnknownSource",
+        },
+        "SetKaggleArn": {
+            "Type": "Pass",
+            "Result": "${KaggleCrawlerArn}",
+            "ResultPath": "$.crawlerArn",
+            "Next": "ValidateInput",
+        },
+        "SetHuggingFaceArn": {
+            "Type": "Pass",
+            "Result": "${HuggingFaceCrawlerArn}",
+            "ResultPath": "$.crawlerArn",
+            "Next": "ValidateInput",
+        },
+        "FailUnknownSource": {
+            "Type": "Fail",
+            "Error": "ValidationError",
+            "Cause": "Unsupported source; valid values: kaggle, huggingface",
+        },
 
         # ── Input validation ────────────────────────────────────────────────
         "ValidateInput": {
@@ -99,6 +136,7 @@ _ASL = json.dumps({
                 "limitPerPage.$": "$.limitPerPage",
                 "pagesPerBatch.$": "$.pagesPerBatch",
                 "maxBatches.$": "$.maxBatches",
+                "crawlerArn.$": "$.crawlerArn",
             },
             "Next": "FanOutCategories",
         },
@@ -109,12 +147,13 @@ _ASL = json.dumps({
             "ItemsPath": "$.categories",
             "MaxConcurrency": 5,
             "ItemSelector": {
-                "runId.$": "$$.Execution.Input.runId",
-                "source.$": "$$.Execution.Input.source",
+                "runId.$": "$.runId",
+                "source.$": "$.source",
                 "category.$": "$$.Map.Item.Value",
-                "limitPerPage.$": "$$.Execution.Input.limitPerPage",
-                "pagesPerBatch.$": "$$.Execution.Input.pagesPerBatch",
-                "maxBatches.$": "$$.Execution.Input.maxBatches",
+                "limitPerPage.$": "$.limitPerPage",
+                "pagesPerBatch.$": "$.pagesPerBatch",
+                "maxBatches.$": "$.maxBatches",
+                "crawlerArn.$": "$.crawlerArn",
                 "startPage": 1,
                 "batchCount": 0,
             },
@@ -127,7 +166,7 @@ _ASL = json.dumps({
                         "Type": "Task",
                         "Resource": "arn:aws:states:::lambda:invoke",
                         "Parameters": {
-                            "FunctionName": "${KaggleCrawlerArn}",
+                            "FunctionName.$": "$.crawlerArn",
                             "Payload.$": "$",
                         },
                         "ResultSelector": {
@@ -141,10 +180,9 @@ _ASL = json.dumps({
                         "ResultPath": "$.batchResult",
                         "Retry": [
                             {
-                                # Kaggle persistent 429: wait longer than Retry-After (typ. 60s).
-                                # KaggleRateLimitError is raised by kaggle_client._call_with_retry
-                                # when the 429 persists after the one in-Lambda sleep+retry.
-                                "ErrorEquals": ["KaggleRateLimitError"],
+                                # Persistent 429 after the one in-Lambda sleep+retry.
+                                # Covers both KaggleRateLimitError and HFRateLimitError.
+                                "ErrorEquals": ["KaggleRateLimitError", "HFRateLimitError"],
                                 "IntervalSeconds": 90,
                                 "BackoffRate": 1.5,
                                 "MaxAttempts": 5,
@@ -202,6 +240,7 @@ _ASL = json.dumps({
                             "limitPerPage.$": "$.limitPerPage",
                             "pagesPerBatch.$": "$.pagesPerBatch",
                             "maxBatches.$": "$.maxBatches",
+                            "crawlerArn.$": "$.crawlerArn",
                             "startPage.$": "States.MathAdd($.batchResult.lastPageFetched, 1)",
                             "batchCount.$": "States.MathAdd($.batchCount, 1)",
                         },
@@ -254,6 +293,7 @@ class OrchestratorStack(cdk.Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         kaggle_fn_arn = Fn.import_value("KaggleCrawlerFunctionArn")
+        hf_fn_arn = Fn.import_value("HuggingFaceCrawlerFunctionArn")
 
         # ── SSM source registry ─────────────────────────────────────────────
         # Authoritative record of the source→Lambda ARN mapping.
@@ -263,7 +303,7 @@ class OrchestratorStack(cdk.Stack):
             self,
             "SourceRegistry",
             parameter_name="/data-curator/crawler-orchestrator/source-registry",
-            string_value=json.dumps({"kaggle": kaggle_fn_arn}),
+            string_value=json.dumps({"kaggle": kaggle_fn_arn, "huggingface": hf_fn_arn}),
             description=(
                 "Source→Lambda ARN registry for the crawler orchestrator. "
                 "ARNs are also baked into the state machine via CDK definition substitutions."
@@ -291,7 +331,7 @@ class OrchestratorStack(cdk.Stack):
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=["lambda:InvokeFunction"],
-                resources=[kaggle_fn_arn],
+                resources=[kaggle_fn_arn, hf_fn_arn],
             )
         )
 
@@ -331,7 +371,10 @@ class OrchestratorStack(cdk.Stack):
             state_machine_name="data-curator-crawler-orchestrator",
             state_machine_type=sfn.StateMachineType.STANDARD,
             definition_body=sfn.DefinitionBody.from_string(_ASL),
-            definition_substitutions={"KaggleCrawlerArn": kaggle_fn_arn},
+            definition_substitutions={
+                "KaggleCrawlerArn": kaggle_fn_arn,
+                "HuggingFaceCrawlerArn": hf_fn_arn,
+            },
             role=sm_role,
             logs=sfn.LogOptions(
                 destination=log_group,
