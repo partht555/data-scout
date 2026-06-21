@@ -4,6 +4,7 @@ from aws_cdk import (
     RemovalPolicy,
     aws_dynamodb as dynamodb,
     aws_iam as iam,
+    aws_sqs as sqs,
 )
 from constructs import Construct
 
@@ -93,6 +94,16 @@ class MetadataStoreStack(cdk.Stack):
                 ],
                 resources=[self.table.table_stream_arn],
             )
+        )
+
+        # Kept with the index worker role so its SendMessage permission does
+        # not create a cross-stack dependency cycle when the worker is added.
+        self.index_worker_dlq = sqs.Queue(
+            self,
+            "IndexWorkerDlq",
+            queue_name="data-curator-index-worker-dlq",
+            retention_period=cdk.Duration.days(14),
+            encryption=sqs.QueueEncryption.SQS_MANAGED,
         )
 
         # ── CloudFormation outputs ──────────────────────────────────────────
