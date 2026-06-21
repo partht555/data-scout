@@ -26,6 +26,7 @@ def plan():
         "sources": ["kaggle"],
         "licenses": [],
         "recency": "recent",
+        "suggestedLimit": 3,
         "confidence": 0.92,
     }
 
@@ -36,12 +37,22 @@ class IntentParserTests(unittest.TestCase):
         self.assertEqual(parsed["mode"], "bedrock")
         self.assertEqual(parsed["requiredColumns"], ["date", "sales"])
         self.assertEqual(parsed["confidence"], 0.92)
+        self.assertEqual(parsed["suggestedLimit"], 3)
 
     def test_explicit_filters_override_model_values(self):
         parser = BedrockIntentParser(lambda _: plan())
         parsed = parser.parse(request({"format": ["parquet"], "source": ["kaggle"], "license": ["cc0"]}))
         self.assertEqual(parsed["preferredFormats"], ["parquet"])
         self.assertEqual(parsed["licenses"], ["cc0"])
+
+    def test_explicit_limit_overrides_model_suggested_limit(self):
+        parsed = BedrockIntentParser(lambda _: plan()).parse({**request(), "limit": 7, "explicitLimit": True})
+        self.assertEqual(parsed["suggestedLimit"], 7)
+
+    def test_invalid_suggested_limit_falls_back_to_keywords(self):
+        parsed = interpret_request(request(), BedrockIntentParser(lambda _: {**plan(), "suggestedLimit": 21}))
+        self.assertEqual(parsed["mode"], "keyword")
+        self.assertEqual(parsed["suggestedLimit"], 5)
 
     def test_model_dsl_is_rejected_and_falls_back_to_keywords(self):
         unsafe_plan = {**plan(), "rawOpenSearchDsl": {"match_all": {}}}

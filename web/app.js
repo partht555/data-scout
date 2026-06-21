@@ -11,25 +11,14 @@ const catalog = [
 ];
 
 function buildPayload(query) {
-  const lower = query.toLowerCase();
-  const limitMatch = lower.match(/\b(\d{1,2})\s+(?:(?:[a-z-]+\s+){0,3})?(?:datasets?|results?)\b/);
-  const payload = { query, limit: limitMatch ? Math.min(Math.max(Number(limitMatch[1]), 1), 20) : 5 };
-  const formats = [["csv", /\bcsv\b/], ["json", /\bjson\b/], ["parquet", /\bparquet\b/], ["tsv", /\btsv\b/], ["xlsx", /\b(?:xlsx|excel|spreadsheet)\b/]]
-    .filter(([, pattern]) => pattern.test(lower))
-    .map(([format]) => format);
-  const licenseMatch = lower.match(/(?:license[\s:=-]*|under\s+)(cc[-\s]?by(?:[-\s]?\d(?:\.\d)?)?)/);
-  if (formats.length || lower.includes("kaggle") || licenseMatch) payload.filters = {};
-  if (formats.length) payload.filters.format = formats;
-  if (lower.includes("kaggle")) payload.filters.source = ["kaggle"];
-  if (licenseMatch) payload.filters.license = [licenseMatch[1].replace(/[\s-]+/g, "-")];
-  return payload;
+  return { query };
 }
 
 function localResponse(payload) {
   const lower = payload.query.toLowerCase();
   const term = lower.includes("food") || lower.includes("nutrition") ? "Food Nutrition Dataset" : lower.includes("retail") || lower.includes("sales") || lower.includes("forecast") ? "Retail Sales Data" : lower.includes("formula") || lower.includes("race") || lower.includes("sports") ? "Formula 1 World Championship Results" : null;
   const results = term ? catalog.filter((item) => item.title === term) : [];
-  return { results: results.slice(0, payload.limit) };
+  return { interpretedIntent: { mode: "dry-run", suggestedLimit: 5 }, results: results.slice(0, 5) };
 }
 
 function appendMessage(kind, content) {
@@ -44,7 +33,7 @@ function appendMessage(kind, content) {
 function renderResults(payload, response) {
   const intent = response.interpretedIntent || {};
   const plan = [
-    `limit: ${payload.limit}`,
+    `limit: ${intent.suggestedLimit || payload.limit || 5}`,
     `mode: ${intent.mode || "dry-run"}`,
     ...(intent.preferredFormats || payload.filters?.format || []).map((value) => `format: ${value}`),
     ...(intent.sources || payload.filters?.source || []).map((value) => `source: ${value}`),

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from query_router.handler import lambda_handler  # noqa: E402
+from query_router.handler import _apply_intent_defaults, lambda_handler  # noqa: E402
 from query_router.opensearch_repository import OpenSearchUnavailable  # noqa: E402
 
 
@@ -66,6 +66,12 @@ class QueryRouterTests(unittest.TestCase):
 
         self.assertEqual(response["statusCode"], 400)
         self.assertIn("limit", json.loads(response["body"])["error"]["message"])
+
+    def test_model_suggested_limit_applies_only_without_an_explicit_limit(self):
+        base_request = {"query": "nutrition datasets", "limit": 5, "explicitLimit": False, "filters": {}}
+        self.assertEqual(_apply_intent_defaults(base_request, {"suggestedLimit": 3})["limit"], 3)
+        explicit = {**base_request, "limit": 7, "explicitLimit": True}
+        self.assertEqual(_apply_intent_defaults(explicit, {"suggestedLimit": 3})["limit"], 7)
 
     @patch.dict("os.environ", {"SEARCH_REPOSITORY": "opensearch", "OPENSEARCH_ENDPOINT": "https://example.com"})
     @patch("query_router.handler.OpenSearchRepository.from_environment")

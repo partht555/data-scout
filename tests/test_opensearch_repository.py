@@ -55,8 +55,11 @@ class OpenSearchRepositoryTests(unittest.TestCase):
 
     def test_model_preferences_do_not_become_hidden_hard_filters(self):
         request = dict(REQUEST, filters={})
-        body = build_search_body(request, INTENT)
+        body = build_search_body(request, dict(INTENT, preferredFormats=["csv"], sources=["kaggle"], licenses=["cc0"]))
         self.assertEqual(body["query"]["bool"]["filter"], [{"term": {"status": "active"}}])
+        boosts = body["query"]["bool"]["should"][2:]
+        self.assertEqual(len(boosts), 3)
+        self.assertIn("constant_score", boosts[0])
 
     def test_recent_intent_uses_a_function_score_recency_boost(self):
         body = build_search_body(REQUEST, dict(INTENT, recency="recent"))

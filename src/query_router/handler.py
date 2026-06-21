@@ -49,7 +49,8 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     try:
         intent = interpret_request(request, _intent_parser())
-        results, next_cursor, repository = _search(request, intent)
+        search_request = _apply_intent_defaults(request, intent)
+        results, next_cursor, repository = _search(search_request, intent)
     except InvalidCursor as error:
         return _response(400, {"error": {"code": "INVALID_REQUEST", "message": str(error)}, "requestId": request_id})
     except OpenSearchUnavailable:
@@ -58,6 +59,15 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     _log_search(request_id, started, repository, intent["mode"], len(results), intent["mode"] == "keyword" and _bedrock_enabled())
     return _response(200, {"query": request["query"], "interpretedIntent": intent, "results": results, "nextCursor": next_cursor})
+
+
+def _apply_intent_defaults(request: dict[str, Any], intent: dict[str, Any]) -> dict[str, Any]:
+    """Use the validated model count unless a caller supplied an explicit limit."""
+
+    search_request = dict(request)
+    if not request.get("explicitLimit", False):
+        search_request["limit"] = intent.get("suggestedLimit", DEFAULT_LIMIT)
+    return search_request
 
 
 def _search(request: dict[str, Any], intent: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None, str]:
@@ -137,7 +147,7 @@ def _validate_request(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     filters = _validate_filters(payload.get("filters", {}))
-    return {"query": query, "limit": limit, "cursor": cursor, "filters": filters}
+    return {"query": query, "limit": limit, "explicitLimit": "limit" in payload, "cursor": cursor, "filters": filters}
 
 
 def _validate_filters(filters: Any) -> dict[str, list[str]]:
