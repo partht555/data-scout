@@ -6,7 +6,10 @@ API:   boto3 bedrock-runtime invoke_model
 """
 import json
 import logging
+import time
 from typing import Any
+
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +18,11 @@ MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 DOMAIN_ALLOWLIST = frozenset({
     "healthcare", "finance", "retail", "climate",
     "transportation", "education", "government",
-    "sports", "science", "other",
+    "sports", "science", "nlp", "computer-vision", "other",
 })
 DATA_TYPE_ALLOWLIST = frozenset({
     "tabular", "time-series", "text", "image",
-    "audio", "graph", "other",
+    "audio", "video", "graph", "geospatial", "multimodal", "other",
 })
 
 SYSTEM_PROMPT = (
@@ -27,8 +30,8 @@ SYSTEM_PROMPT = (
     "with exactly three fields:\n\n"
     '{\n'
     '  "inferredDomain": "<one of: healthcare, finance, retail, climate, transportation, '
-    'education, government, sports, science, other>",\n'
-    '  "inferredDataType": "<one of: tabular, time-series, text, image, audio, graph, other>",\n'
+    'education, government, sports, science, nlp, computer-vision, other>",\n'
+    '  "inferredDataType": "<one of: tabular, time-series, text, image, audio, video, graph, geospatial, multimodal, other>",\n'
     '  "useCaseSummary": "<one or two factual sentences about what analytical tasks this '
     'dataset supports>"\n'
     "}\n\n"
@@ -39,6 +42,15 @@ SYSTEM_PROMPT = (
     "- Write useCaseSummary based only on the provided metadata. Do not invent column names "
     "or capabilities. Use an empty string if the metadata is insufficient."
 )
+
+
+_RETRYABLE_BEDROCK_CODES = frozenset({
+    "ThrottlingException",
+    "ModelNotReadyException",
+    "ServiceUnavailableException",
+})
+_BEDROCK_MAX_ATTEMPTS = 4
+_BEDROCK_BASE_DELAY = 2.0  # seconds; doubles each attempt: 2s, 4s, 8s
 
 
 class BedrockEnricher:
@@ -54,26 +66,41 @@ class BedrockEnricher:
 
         Raises:
             ValueError   — model returned invalid JSON or out-of-allowlist enum value
-            ClientError  — Bedrock throttling or service error
+            ClientError  — Bedrock error that persists after retries
         Both are caught by the caller in handler.py, which sets enrichmentStatus="failed".
         """
         user_message = self._build_user_message(record)
+        body_bytes = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 256,
+            "system": SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": user_message}],
+        })
 
-        response = self._client.invoke_model(
-            modelId=MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 256,
-                "system": SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": user_message}],
-            }),
-        )
-
-        body = json.loads(response["body"].read())
-        raw_text = body["content"][0]["text"].strip()
-        return self._validate(raw_text)
+        last_exc: ClientError | None = None
+        for attempt in range(_BEDROCK_MAX_ATTEMPTS):
+            try:
+                response = self._client.invoke_model(
+                    modelId=MODEL_ID,
+                    contentType="application/json",
+                    accept="application/json",
+                    body=body_bytes,
+                )
+                body = json.loads(response["body"].read())
+                raw_text = body["content"][0]["text"].strip()
+                return self._validate(raw_text)
+            except ClientError as exc:
+                code = exc.response["Error"]["Code"]
+                if code in _RETRYABLE_BEDROCK_CODES and attempt < _BEDROCK_MAX_ATTEMPTS - 1:
+                    delay = _BEDROCK_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f"Bedrock {code} on attempt {attempt + 1}; retrying in {delay:.0f}s"
+                    )
+                    time.sleep(delay)
+                    last_exc = exc
+                    continue
+                raise
+        raise last_exc  # type: ignore[misc]  # unreachable; satisfies type checker
 
     @staticmethod
     def _build_user_message(record: dict) -> str:

@@ -8,6 +8,11 @@ from collections.abc import Mapping
 from typing import Any
 
 MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+SUMMARY_SYSTEM_PROMPT = """Write one or two sentences summarising dataset search results for a user.
+Be specific about what the datasets contain and how they fit the request.
+Do not mention relevance scores, matched fields, or technical search details.
+Return plain text only — no markdown, no lists, no explanations."""
+
 SYSTEM_PROMPT = """You convert dataset requests into a strict JSON search plan.
 Return JSON only with exactly: task, keywords, preferredFormats, requiredColumns,
 sources, licenses, recency, suggestedLimit, confidence. Use only supplied allowed values for
@@ -50,3 +55,33 @@ class BedrockIntentInvoker:
             return json.loads(text)
         except Exception as error:  # provider failures must degrade to keyword search
             raise OSError("Bedrock intent interpretation failed.") from error
+
+
+class BedrockResultSummarizer:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    @classmethod
+    def from_environment(cls) -> "BedrockResultSummarizer":
+        import boto3
+
+        return cls(boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1")))
+
+    def summarize(self, query: str, results: list[dict[str, Any]]) -> str:
+        compact = [{"title": r["title"], "summary": r.get("summary", "")} for r in results[:5]]
+        try:
+            response = self._client.invoke_model(
+                modelId=os.getenv("BEDROCK_MODEL_ID", MODEL_ID),
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": 150,
+                    "system": SUMMARY_SYSTEM_PROMPT,
+                    "messages": [{"role": "user", "content": json.dumps({"query": query, "results": compact})}],
+                }),
+            )
+            payload = json.loads(response["body"].read())
+            return payload["content"][0]["text"].strip()
+        except Exception:
+            return ""

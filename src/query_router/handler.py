@@ -9,7 +9,7 @@ import os
 import time
 from typing import Any
 
-from .bedrock_adapter import BedrockIntentInvoker
+from .bedrock_adapter import BedrockIntentInvoker, BedrockResultSummarizer
 from .intent_parser import interpret_request
 from .opensearch_repository import InvalidCursor, OpenSearchRepository, OpenSearchUnavailable
 
@@ -57,8 +57,9 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         _log_search(request_id, started, "opensearch", "unavailable", 0, False)
         return _response(503, {"error": {"code": "SEARCH_UNAVAILABLE", "message": "Dataset search is temporarily unavailable."}, "requestId": request_id})
 
+    result_summary = _summarize_results(request["query"], results)
     _log_search(request_id, started, repository, intent["mode"], len(results), intent["mode"] == "keyword" and _bedrock_enabled())
-    return _response(200, {"query": request["query"], "interpretedIntent": intent, "results": results, "nextCursor": next_cursor})
+    return _response(200, {"query": request["query"], "interpretedIntent": intent, "resultSummary": result_summary, "results": results, "nextCursor": next_cursor})
 
 
 def _apply_intent_defaults(request: dict[str, Any], intent: dict[str, Any]) -> dict[str, Any]:
@@ -68,6 +69,15 @@ def _apply_intent_defaults(request: dict[str, Any], intent: dict[str, Any]) -> d
     if not request.get("explicitLimit", False):
         search_request["limit"] = intent.get("suggestedLimit", DEFAULT_LIMIT)
     return search_request
+
+
+def _summarize_results(query: str, results: list[dict[str, Any]]) -> str | None:
+    if not results or not _bedrock_enabled():
+        return None
+    try:
+        return BedrockResultSummarizer.from_environment().summarize(query, results) or None
+    except Exception:
+        return None
 
 
 def _search(request: dict[str, Any], intent: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None, str]:

@@ -141,6 +141,15 @@ _ASL = json.dumps({
                         "ResultPath": "$.batchResult",
                         "Retry": [
                             {
+                                # Kaggle persistent 429: wait longer than Retry-After (typ. 60s).
+                                # KaggleRateLimitError is raised by kaggle_client._call_with_retry
+                                # when the 429 persists after the one in-Lambda sleep+retry.
+                                "ErrorEquals": ["KaggleRateLimitError"],
+                                "IntervalSeconds": 90,
+                                "BackoffRate": 1.5,
+                                "MaxAttempts": 5,
+                            },
+                            {
                                 # Retry is safe: DynamoDB condition attribute_not_exists(PK)
                                 # OR :newLastUpdatedAt > #lastUpdatedAt ensures re-processing
                                 # already-written records is a no-op.
@@ -152,7 +161,7 @@ _ASL = json.dumps({
                                 "IntervalSeconds": 10,
                                 "BackoffRate": 2,
                                 "MaxAttempts": 3,
-                            }
+                            },
                         ],
                         "Catch": [
                             {
@@ -331,7 +340,7 @@ class OrchestratorStack(cdk.Stack):
             ),
             tracing_enabled=False,
             removal_policy=RemovalPolicy.DESTROY,
-            timeout=Duration.hours(2),
+            timeout=Duration.hours(12),
         )
 
         # ── CloudFormation outputs ──────────────────────────────────────────
