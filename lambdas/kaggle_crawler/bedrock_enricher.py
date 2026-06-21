@@ -18,11 +18,11 @@ MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 DOMAIN_ALLOWLIST = frozenset({
     "healthcare", "finance", "retail", "climate",
     "transportation", "education", "government",
-    "sports", "science", "other",
+    "sports", "science", "nlp", "computer-vision", "other",
 })
 DATA_TYPE_ALLOWLIST = frozenset({
     "tabular", "time-series", "text", "image",
-    "audio", "graph", "other",
+    "audio", "video", "graph", "geospatial", "multimodal", "other",
 })
 
 SYSTEM_PROMPT = (
@@ -30,8 +30,8 @@ SYSTEM_PROMPT = (
     "with exactly three fields:\n\n"
     '{\n'
     '  "inferredDomain": "<one of: healthcare, finance, retail, climate, transportation, '
-    'education, government, sports, science, other>",\n'
-    '  "inferredDataType": "<one of: tabular, time-series, text, image, audio, graph, other>",\n'
+    'education, government, sports, science, nlp, computer-vision, other>",\n'
+    '  "inferredDataType": "<one of: tabular, time-series, text, image, audio, video, graph, geospatial, multimodal, other>",\n'
     '  "useCaseSummary": "<one or two factual sentences about what analytical tasks this '
     'dataset supports>"\n'
     "}\n\n"
