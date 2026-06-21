@@ -1,6 +1,12 @@
 const conversation = document.querySelector("#conversation");
 const form = document.querySelector("#search-form");
 const input = document.querySelector("#prompt-input");
+const chatHistoryList = document.querySelector("#chat-history");
+const SESSION_KEY = "data-scout.chats.v2";
+const LEGACY_SESSION_KEY = "data-scout.chat.v1";
+const MAX_SESSION_CHATS = 20;
+const MAX_SESSION_EXCHANGES = 20;
+let chatState = loadChatState();
 
 const catalog = [
   {
@@ -62,9 +68,14 @@ function localResponse(payload) {
 function appendMessage(kind, content) {
   const article = document.createElement("article");
   article.className = `message ${kind}-message`;
-  article.innerHTML = kind === "assistant"
-    ? `<div class="avatar">✦</div><div class="bubble">${content}</div>`
-    : `<div class="bubble">${content}</div>`;
+  if (kind === "assistant") {
+    article.innerHTML = `<div class="avatar">✦</div><div class="bubble">${content}</div>`;
+  } else {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = content;
+    article.append(bubble);
+  }
   conversation.append(article);
   conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   return article;
@@ -184,6 +195,7 @@ function compactValues(values, ...keys) {
 
 async function search(query) {
   const payload = buildPayload(query);
+  ensureActiveChat(query);
   appendMessage("user", query);
   const loading = appendMessage("assistant", '<p class="loading">Searching the catalog...</p>');
   try {
@@ -193,13 +205,130 @@ async function search(query) {
     response = await request.json();
     if (!request.ok) throw new Error(response.error?.message || "The search API returned an error.");
     loading.querySelector(".bubble").innerHTML = renderResults(payload, response);
+    rememberExchange({ query, response });
     conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
   } catch (error) {
-    loading.querySelector(".bubble").innerHTML = `<p class="error">${error.message}</p><p class="result-summary">Check the endpoint configuration or try again.</p>`;
+    const message = error instanceof Error ? error.message : "The search could not be completed.";
+    loading.querySelector(".bubble").innerHTML = renderError(message);
+    rememberExchange({ query, error: message });
   }
+}
+
+function renderError(message) {
+  return `<p class="error">${escapeHtml(message)}</p><p class="result-summary">Check the endpoint configuration or try again.</p>`;
+}
+
+function loadChatState() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    if (saved && Array.isArray(saved.chats)) {
+      const chats = saved.chats.filter(isValidChat).slice(0, MAX_SESSION_CHATS);
+      const activeId = chats.some((chat) => chat.id === saved.activeId) ? saved.activeId : null;
+      return { activeId, chats };
+    }
+    const legacy = JSON.parse(sessionStorage.getItem(LEGACY_SESSION_KEY) || "[]");
+    if (Array.isArray(legacy) && legacy.filter(isValidExchange).length) {
+      const exchanges = legacy.filter(isValidExchange).slice(-MAX_SESSION_EXCHANGES);
+      const chat = createChat(exchanges[0].query, exchanges);
+      return { activeId: chat.id, chats: [chat] };
+    }
+  } catch {
+    // Start with an empty in-memory session if browser storage is unavailable.
+  }
+  return { activeId: null, chats: [] };
+}
+
+function isValidExchange(entry) {
+  return entry && typeof entry.query === "string" && (entry.response || typeof entry.error === "string");
+}
+
+function isValidChat(chat) {
+  return chat && typeof chat.id === "string" && typeof chat.title === "string" && Array.isArray(chat.exchanges);
+}
+
+function createChat(title, exchanges = []) {
+  return {
+    id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+    title: title.length > 44 ? `${title.slice(0, 41)}...` : title,
+    exchanges: exchanges.slice(-MAX_SESSION_EXCHANGES),
+  };
+}
+
+function activeChat() {
+  return chatState.chats.find((chat) => chat.id === chatState.activeId) || null;
+}
+
+function ensureActiveChat(query) {
+  if (activeChat()) return;
+  const chat = createChat(query);
+  chatState = { activeId: chat.id, chats: [chat, ...chatState.chats].slice(0, MAX_SESSION_CHATS) };
+  saveChatState();
+  renderChatList();
+}
+
+function rememberExchange(exchange) {
+  const chat = activeChat();
+  if (!chat) return;
+  chat.exchanges = [...chat.exchanges, exchange].slice(-MAX_SESSION_EXCHANGES);
+  chatState.chats = [chat, ...chatState.chats.filter((item) => item.id !== chat.id)];
+  saveChatState();
+  renderChatList();
+}
+
+function saveChatState() {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(chatState));
+    sessionStorage.removeItem(LEGACY_SESSION_KEY);
+  } catch {
+    // Storage can be unavailable or full; the visible chat still works normally.
+  }
+}
+
+function restoreActiveChat() {
+  conversation.querySelectorAll(".message:not(.intro-message)").forEach((message) => message.remove());
+  const chat = activeChat();
+  if (!chat) return;
+  for (const exchange of chat.exchanges) {
+    appendMessage("user", exchange.query);
+    const content = exchange.response
+      ? renderResults(buildPayload(exchange.query), exchange.response)
+      : renderError(exchange.error);
+    appendMessage("assistant", content);
+  }
+}
+
+function renderChatList() {
+  chatHistoryList.innerHTML = "";
+  for (const chat of chatState.chats) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `history-item${chat.id === chatState.activeId ? " active" : ""}`;
+    button.textContent = chat.title;
+    button.addEventListener("click", () => {
+      chatState.activeId = chat.id;
+      saveChatState();
+      renderChatList();
+      restoreActiveChat();
+    });
+    chatHistoryList.append(button);
+  }
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[character]));
 }
 
 form.addEventListener("submit", (event) => { event.preventDefault(); const query = input.value.trim(); if (query) { input.value = ""; search(query); } });
 input.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); } });
 document.querySelectorAll(".prompt").forEach((button) => button.addEventListener("click", () => { input.value = button.dataset.prompt; form.requestSubmit(); }));
-document.querySelector("#new-chat").addEventListener("click", () => { conversation.querySelectorAll(".message:not(.intro-message)").forEach((message) => message.remove()); input.focus(); });
+document.querySelector("#new-chat").addEventListener("click", () => {
+  chatState.activeId = null;
+  saveChatState();
+  renderChatList();
+  restoreActiveChat();
+  input.focus();
+});
+renderChatList();
+restoreActiveChat();
