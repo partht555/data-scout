@@ -15,7 +15,7 @@ Parameters:
     Default: arn:aws:es:us-east-1:958975572378:domain/data-curator-datasets
   EnableBedrockIntent:
     Type: String
-    Default: "false"
+    Default: "true"
     AllowedValues: ["true", "false"]
 
 Globals:
@@ -79,6 +79,8 @@ Resources:
               - Effect: Allow
                 Action: bedrock:InvokeModel
                 Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-sonnet-4-6'
+                  - arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6
                   - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0'
                   - arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0
       Tags:
@@ -102,7 +104,8 @@ Resources:
           OPENSEARCH_ENDPOINT: !Ref OpenSearchEndpoint
           OPENSEARCH_INDEX: datasets-v1
           ENABLE_BEDROCK_INTENT: !Ref EnableBedrockIntent
-          BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
+          INTENT_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
+          SUMMARY_MODEL_ID: us.anthropic.claude-sonnet-4-6
       Events:
         Search:
           Type: HttpApi

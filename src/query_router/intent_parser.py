@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 
 ALLOWED_FORMATS = {"csv", "json", "parquet", "tsv", "xlsx"}
-ALLOWED_SOURCES = {"kaggle"}
+ALLOWED_SOURCES = {"kaggle", "huggingface"}
 ALLOWED_RECENCY = {"any", "recent"}
 MAX_PLAN_LIST_ITEMS = 10
 MAX_PLAN_STRING_LENGTH = 100

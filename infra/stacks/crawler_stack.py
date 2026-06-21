@@ -166,3 +166,106 @@ class CrawlerStack(cdk.Stack):
             export_name="KaggleCredentialsSecretArn",
             description="Populate with Kaggle credentials before running crawls",
         )
+
+        # ── Hugging Face crawler ────────────────────────────────────────────
+        # No mandatory secret — public HF API works without auth.
+        # Optionally populate data-curator/huggingface-credentials with
+        # {"token": "<hf_token>"} after deploy for higher rate limits.
+        hf_secret = sm.Secret(
+            self,
+            "HuggingFaceCredentials",
+            secret_name="data-curator/huggingface-credentials",
+            description=(
+                "Optional HF API token for the HuggingFace crawler Lambda. "
+                'Populate manually: {"token":"<hf_token>"}. '
+                "Leave empty to crawl anonymously (lower rate limit)."
+            ),
+            removal_policy=cdk.RemovalPolicy.RETAIN,
+        )
+
+        hf_crawler_role = iam.Role(
+            self,
+            "HuggingFaceCrawlerRole",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "service-role/AWSLambdaBasicExecutionRole"
+                )
+            ],
+            description="IAM role for the HuggingFace crawler Lambda",
+        )
+
+        hf_crawler_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["secretsmanager:GetSecretValue"],
+                resources=[hf_secret.secret_arn],
+            )
+        )
+
+        hf_crawler_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=[
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:GetItem",
+                ],
+                resources=[table_arn, f"{table_arn}/index/*"],
+            )
+        )
+
+        hf_crawler_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    f"arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+                ],
+            )
+        )
+
+        self.hf_fn = lmb.Function(
+            self,
+            "HuggingFaceCrawlerFn",
+            function_name="huggingface-crawler",
+            runtime=lmb.Runtime.PYTHON_3_12,
+            handler="handler.handler",
+            code=lmb.Code.from_asset(
+                path="../lambdas/huggingface_crawler",
+                bundling=cdk.BundlingOptions(
+                    image=cdk.DockerImage.from_registry(_BUNDLING_IMAGE),
+                    command=[
+                        "bash", "-c",
+                        "pip install -r requirements.txt -t /asset-output --quiet "
+                        "&& cp -r . /asset-output",
+                    ],
+                    local=_LocalBundler("../lambdas/huggingface_crawler"),
+                ),
+            ),
+            role=hf_crawler_role,
+            timeout=Duration.minutes(15),
+            memory_size=512,
+            environment={
+                "HF_SECRET_ARN": hf_secret.secret_arn,
+                "DATASET_TABLE_NAME": "DatasetMetadata",
+            },
+            description=(
+                "Crawls Hugging Face Hub for dataset metadata, enriches via Bedrock Haiku, "
+                "and upserts records to DynamoDB."
+            ),
+        )
+
+        CfnOutput(
+            self, "HuggingFaceCrawlerFunctionArn",
+            value=self.hf_fn.function_arn,
+            export_name="HuggingFaceCrawlerFunctionArn",
+            description="Register this ARN in SSM for the Step Functions orchestrator",
+        )
+        CfnOutput(
+            self, "HuggingFaceSecretArn",
+            value=hf_secret.secret_arn,
+            export_name="HuggingFaceCredentialsSecretArn",
+            description="Optionally populate with HF token for higher rate limits",
+        )
