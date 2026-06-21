@@ -108,15 +108,16 @@ class CrawlerStack(cdk.Stack):
         )
 
         # Bedrock — Claude Haiku model ARN scoped to deployment region
-        bedrock_model_arn = (
-            f"arn:aws:bedrock:{self.region}::foundation-model/"
-            "anthropic.claude-haiku-4-5-20251001"
-        )
+        # Newer Claude models require an inference profile rather than a direct model ID.
+        # IAM must allow both the inference profile ARN and the underlying foundation model ARN.
         crawler_role.add_to_policy(
             iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
                 actions=["bedrock:InvokeModel"],
-                resources=[bedrock_model_arn],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    f"arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
+                ],
             )
         )
 

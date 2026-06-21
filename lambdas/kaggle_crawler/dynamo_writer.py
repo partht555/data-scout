@@ -69,7 +69,7 @@ class DynamoWriter:
         expr_values[":newLastUpdatedAt"] = record["lastUpdatedAt"]
 
         condition_expr = (
-            "attribute_not_exists(#pk) OR :newLastUpdatedAt >= #lastUpdatedAt"
+            "attribute_not_exists(#pk) OR :newLastUpdatedAt > #lastUpdatedAt"
         )
 
         return self._write_with_backoff(

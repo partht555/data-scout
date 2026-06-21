@@ -1,22 +1,24 @@
 """
-Wraps the Kaggle Python SDK for dataset discovery and normalization.
+Calls the Kaggle REST API directly for dataset discovery.
 
-Authentication: injects KAGGLE_USERNAME and KAGGLE_KEY environment variables
-before calling api.authenticate(), which the SDK checks ahead of ~/.kaggle/kaggle.json.
-No file I/O to /tmp required.
+Uses requests + HTTP Basic auth instead of the Kaggle Python SDK.
+The SDK (1.6.x) creates a global ThreadPool at import time which requires
+OS semaphores — incompatible with the Lambda execution sandbox.
 """
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass
+from decimal import Decimal
 from datetime import timezone
 from typing import Any
 
-from kaggle.api.kaggle_api_extended import KaggleApi
-from kaggle.rest import ApiException
+import requests
+from requests.auth import HTTPBasicAuth
 
 logger = logging.getLogger(__name__)
+
+KAGGLE_API_BASE = "https://www.kaggle.com/api/v1"
 
 
 class KaggleAuthError(RuntimeError):
@@ -25,144 +27,106 @@ class KaggleAuthError(RuntimeError):
 
 @dataclass
 class KaggleClient:
-    _api: KaggleApi
+    _auth: HTTPBasicAuth
 
     @classmethod
     def from_secret(cls, sm_client, secret_arn: str) -> "KaggleClient":
-        """
-        Fetch credentials from Secrets Manager and return an authenticated client.
-
-        Expected secret JSON: {"username": "...", "key": "..."}
-        """
+        """Fetch credentials from Secrets Manager and return an authenticated client."""
         response = sm_client.get_secret_value(SecretId=secret_arn)
         creds = json.loads(response["SecretString"])
-        os.environ["KAGGLE_USERNAME"] = creds["username"]
-        os.environ["KAGGLE_KEY"] = creds["key"]
+        return cls(_auth=HTTPBasicAuth(creds["username"], creds["key"]))
 
-        api = KaggleApi()
-        api.authenticate()
-        return cls(_api=api)
-
-    def list_datasets(self, category: str, limit: int, page: int = 1) -> list[Any]:
+    def list_datasets(self, category: str, limit: int, page: int = 1) -> list[dict]:
         """
-        Fetch a single page of datasets for the given category.
+        Fetch a single page of datasets from the Kaggle API.
 
-        Pagination is intentionally not handled here — the orchestrator
-        controls which page to request across invocations.
+        category="" fetches all datasets with no search filter.
+        Returns a list of raw dataset dicts from the API response.
         """
-        page_size = min(limit, 100)  # Kaggle API cap is 100 per page
-        return self._call_with_retry(
-            self._api.datasets_list,
-            search=category,
-            sort_by="updated",
-            page=page,
-            page_size=page_size,
-            file_type="all",
-            license_name="all",
-            tag_ids="",
-        ) or []
+        params: dict = {
+            "sortBy": "updated",
+            "page": page,
+            "pageSize": min(limit, 20),  # Kaggle public API cap is 20 per page
+        }
+        if category:
+            params["search"] = category
 
-    def _call_with_retry(self, fn, **kwargs) -> Any:
+        result = self._call_with_retry(f"{KAGGLE_API_BASE}/datasets/list", params=params)
+        return result if isinstance(result, list) else []
+
+    def _call_with_retry(self, url: str, **kwargs) -> Any:
         """
-        Execute fn(**kwargs) with one retry on 429.
+        GET url with one retry on 429.
 
-        - 401/403: raise KaggleAuthError immediately (non-retryable)
+        - 401/403: raise KaggleAuthError (non-retryable)
         - 429: sleep Retry-After (default 60s), retry once
         - 5xx / other: raise for orchestrator-level retry
         """
         for attempt in range(2):
-            try:
-                return fn(**kwargs)
-            except ApiException as exc:
-                status = exc.status
-                if status in (401, 403):
-                    raise KaggleAuthError(
-                        f"Kaggle API auth failure ({status}): {exc.reason}"
-                    ) from exc
-                if status == 429:
-                    if attempt == 0:
-                        retry_after = int(
-                            (exc.headers or {}).get("Retry-After", 60)
-                        )
-                        logger.warning(f"Kaggle 429 rate limit; sleeping {retry_after}s")
-                        time.sleep(retry_after)
-                        continue
-                    raise
-                raise
+            resp = requests.get(url, auth=self._auth, timeout=30, **kwargs)
+            if resp.status_code in (401, 403):
+                raise KaggleAuthError(
+                    f"Kaggle API auth failure ({resp.status_code}): {resp.text[:200]}"
+                )
+            if resp.status_code == 429:
+                if attempt == 0:
+                    retry_after = int(resp.headers.get("Retry-After", 60))
+                    logger.warning(f"Kaggle 429 rate limit; sleeping {retry_after}s")
+                    time.sleep(retry_after)
+                    continue
+                resp.raise_for_status()
+            resp.raise_for_status()
+            return resp.json()
         raise RuntimeError("Unreachable retry loop exit")
 
     @staticmethod
-    def normalize(raw: Any, crawl_observed_at: str) -> dict:
+    def normalize(raw: dict, crawl_observed_at: str) -> dict:
         """
-        Map a Kaggle SDK dataset object to the DynamoDB record shape.
+        Map a Kaggle API response dict to the DynamoDB record shape.
 
-        Uses getattr with fallbacks throughout — SDK v1 attribute names
-        (snake_case) differ from the JSON API docs, and list vs. detail
-        responses expose different attribute subsets.
+        The list endpoint returns camelCase keys; this normalizes them
+        to the internal schema.
         """
-        owner = getattr(raw, "owner_slug", "") or ""
-        slug = getattr(raw, "dataset_slug", "") or ""
+        ref = raw.get("ref", "/")
+        parts = ref.split("/", 1)
+        owner = parts[0] if len(parts) > 1 else ""
+        slug = parts[1] if len(parts) > 1 else ref
         dataset_id = f"kaggle:{owner}/{slug}"
 
-        # Files
-        files = []
-        for f in (getattr(raw, "files", None) or []):
-            name = getattr(f, "name", "") or ""
-            ext = name.rsplit(".", 1)[-1].lower() if "." in name else "unknown"
-            size = getattr(f, "total_bytes", None) or 0
-            files.append({"name": name, "format": ext, "sizeBytes": size})
+        # lastUpdatedAt — API returns ISO 8601 string
+        last_updated = raw.get("lastUpdated") or ""
+        if last_updated and not (last_updated.endswith("Z") or "+" in last_updated):
+            last_updated += "Z"
+        last_updated_at = last_updated or crawl_observed_at
 
-        # Schema columns from datasetFiles if available
-        schema = []
-        for df in (getattr(raw, "dataset_files", None) or []):
-            for col in (getattr(df, "columns", None) or []):
-                schema.append({
-                    "name": getattr(col, "name", ""),
-                    "type": getattr(col, "type", "unknown"),
-                    "nullable": getattr(col, "nullable", True),
-                })
-        schema_status = "available" if schema else "unavailable"
+        # Tags — list of {ref, name, ...} dicts
+        tags = [
+            t.get("name") or t.get("ref", "")
+            for t in (raw.get("tags") or [])
+        ]
+        tags = [t for t in tags if t]
 
-        # Tags
-        tags = []
-        for t in (getattr(raw, "tags", None) or []):
-            name = getattr(t, "name", None) or getattr(t, "ref", None)
-            if name:
-                tags.append(str(name))
-
-        # lastUpdatedAt — may be a datetime or ISO string
-        last_updated = getattr(raw, "last_updated", None)
-        if last_updated is not None and hasattr(last_updated, "isoformat"):
-            last_updated_at = last_updated.astimezone(timezone.utc).isoformat()
-        else:
-            last_updated_at = str(last_updated) if last_updated else crawl_observed_at
-
-        description = (getattr(raw, "description", "") or "")[:2000]
-        license_name = getattr(raw, "license_name", "") or ""
-        usability = float(getattr(raw, "usability_rating", 0.0) or 0.0)
+        description = (
+            raw.get("subtitle") or raw.get("description") or ""
+        )[:2000]
 
         record: dict = {
             "PK": "SOURCE#kaggle",
             "SK": f"DATASET#{owner}/{slug}",
             "datasetId": dataset_id,
             "source": "kaggle",
-            "title": getattr(raw, "title", "") or "",
+            "title": raw.get("title") or "",
             "url": f"https://www.kaggle.com/datasets/{owner}/{slug}",
             "description": description,
             "tags": tags,
-            "license": license_name,
-            "usabilityRating": usability,
+            "license": raw.get("licenseName") or "",
+            "usabilityRating": Decimal(str(raw.get("usabilityRating") or 0)),
             "lastUpdatedAt": last_updated_at,
             "crawlObservedAt": crawl_observed_at,
-            "files": files,
+            "files": [],        # not returned by the list endpoint
+            "schemaStatus": "unavailable",
             "status": "active",
-            "schemaStatus": schema_status,
-            # GSI1 attributes for the recency index in MetadataStoreStack
             "GSI1PK": "DATASET",
             "GSI1SK": last_updated_at,
         }
-
-        if schema:
-            record["schema"] = schema
-
         return record

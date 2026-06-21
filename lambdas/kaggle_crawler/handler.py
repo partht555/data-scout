@@ -1,13 +1,14 @@
 """
 Lambda entry point for the Kaggle source crawler.
 
-Input (from Step Functions or manual invoke):
+Input (from Step Functions orchestrator):
     {
-        "runId":    str,
-        "source":   "kaggle",
-        "category": str,
-        "limit":    int,
-        "page":     int   (optional, defaults to 1)
+        "runId":         str,
+        "source":        "kaggle",
+        "category":      str,   # "" means no search filter (crawl all of Kaggle)
+        "limitPerPage":  int,   # datasets per Kaggle API page (max 100)
+        "startPage":     int,   # first page to fetch (1-indexed)
+        "pagesPerBatch": int    # number of consecutive pages to process (default: 5)
     }
 
 Output:
@@ -15,7 +16,9 @@ Output:
         "recordsWritten":    int,
         "recordsSkipped":    int,
         "enrichmentFailures": int,
-        "errors":            list[str]
+        "errors":            list[str],
+        "lastPageFetched":   int,   # last page successfully processed
+        "hitEndOfResults":   bool   # True when Kaggle returned a short page
     }
 """
 import json
@@ -69,8 +72,9 @@ def handler(event: dict, context) -> dict:
     run_id: str = event["runId"]
     source: str = event["source"]
     category: str = event["category"]
-    limit: int = int(event["limit"])
-    page: int = int(event.get("page", 1))
+    limit_per_page: int = int(event["limitPerPage"])
+    start_page: int = int(event["startPage"])
+    pages_per_batch: int = int(event.get("pagesPerBatch", 5))
 
     if source != "kaggle":
         raise ValueError(f"This Lambda only handles source='kaggle', got {source!r}")
@@ -81,9 +85,10 @@ def handler(event: dict, context) -> dict:
         "event": "crawl_start",
         "runId": run_id,
         "source": source,
-        "category": category,
-        "limit": limit,
-        "page": page,
+        "category": category if category else "<all>",
+        "limitPerPage": limit_per_page,
+        "startPage": start_page,
+        "pagesPerBatch": pages_per_batch,
     }))
 
     client = _get_kaggle_client()
@@ -94,43 +99,57 @@ def handler(event: dict, context) -> dict:
     records_skipped = 0
     enrichment_failures = 0
     errors: list[str] = []
+    last_page_fetched = start_page - 1
+    hit_end_of_results = False
 
-    datasets = client.list_datasets(category=category, limit=limit, page=page)
-    logger.info(f"Fetched {len(datasets)} datasets from Kaggle for category={category!r} page={page}")
+    for page in range(start_page, start_page + pages_per_batch):
+        datasets = client.list_datasets(category=category, limit=limit_per_page, page=page)
+        logger.info(
+            f"Fetched {len(datasets)} datasets - category={category or '<all>'} page={page}"
+        )
 
-    for raw in datasets:
-        dataset_id = None
-        try:
-            record = client.normalize(raw, crawl_observed_at)
-            dataset_id = record["datasetId"]
-        except Exception as exc:
-            logger.warning(f"Normalization failed: {exc}", exc_info=True)
-            errors.append(f"normalization:{exc}")
-            continue
+        for raw in datasets:
+            dataset_id = None
+            try:
+                record = client.normalize(raw, crawl_observed_at)
+                dataset_id = record["datasetId"]
+            except Exception as exc:
+                logger.warning(f"Normalization failed: {exc}", exc_info=True)
+                errors.append(f"normalization:{exc}")
+                continue
 
-        try:
-            enrichment = enricher.enrich(record)
-            record.update(enrichment)
-            record["enrichmentStatus"] = "available"
-        except Exception as exc:
-            logger.warning(f"Enrichment failed for {dataset_id}: {exc}", exc_info=True)
-            record["enrichmentStatus"] = "failed"
-            record.pop("inferredDomain", None)
-            record.pop("inferredDataType", None)
-            record.pop("useCaseSummary", None)
-            enrichment_failures += 1
+            try:
+                enrichment = enricher.enrich(record)
+                record.update(enrichment)
+                record["enrichmentStatus"] = "available"
+            except Exception as exc:
+                logger.warning(f"Enrichment failed for {dataset_id}: {exc}", exc_info=True)
+                record["enrichmentStatus"] = "failed"
+                record.pop("inferredDomain", None)
+                record.pop("inferredDataType", None)
+                record.pop("useCaseSummary", None)
+                enrichment_failures += 1
 
-        written = writer.upsert(record)
-        if written:
-            records_written += 1
-        else:
-            records_skipped += 1
+            written = writer.upsert(record)
+            if written:
+                records_written += 1
+            else:
+                records_skipped += 1
+
+        last_page_fetched = page
+
+        # Short page means we've exhausted Kaggle's results for this query
+        if len(datasets) < limit_per_page:
+            hit_end_of_results = True
+            break
 
     outcome = {
         "recordsWritten": records_written,
         "recordsSkipped": records_skipped,
         "enrichmentFailures": enrichment_failures,
         "errors": errors,
+        "lastPageFetched": last_page_fetched,
+        "hitEndOfResults": hit_end_of_results,
     }
     logger.info(json.dumps({"event": "crawl_end", "runId": run_id, **outcome}))
     return outcome

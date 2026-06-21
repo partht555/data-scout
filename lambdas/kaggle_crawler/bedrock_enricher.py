@@ -10,7 +10,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-MODEL_ID = "anthropic.claude-haiku-4-5-20251001"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 DOMAIN_ALLOWLIST = frozenset({
     "healthcare", "finance", "retail", "climate",
@@ -96,8 +96,14 @@ class BedrockEnricher:
 
     @staticmethod
     def _validate(raw_text: str) -> dict[str, Any]:
+        # Strip markdown code fences if the model ignores the "no fences" instruction
+        text = raw_text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1]   # drop the opening ```json line
+            text = text.rsplit("```", 1)[0]  # drop the closing ```
+            text = text.strip()
         try:
-            data = json.loads(raw_text)
+            data = json.loads(text)
         except json.JSONDecodeError as exc:
             raise ValueError(f"Model returned non-JSON: {raw_text!r}") from exc
 
