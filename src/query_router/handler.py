@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 from typing import Any
+
+from .intent_parser import interpret_request
 
 
 DEFAULT_LIMIT = 5
@@ -46,7 +47,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         200,
         {
             "query": request["query"],
-            "interpretedIntent": _keyword_intent(request),
+            "interpretedIntent": interpret_request(request),
             "results": _search(request),
             "nextCursor": None,
         },
@@ -148,24 +149,6 @@ def _validate_string_list(value: Any, field_name: str) -> list[str]:
     if len(normalized) != len(set(normalized)):
         raise RequestValidationError(f"{field_name} must not contain duplicate values.")
     return normalized
-
-
-def _keyword_intent(request: dict[str, Any]) -> dict[str, Any]:
-    """Return a deterministic placeholder until Bedrock intent parsing is added."""
-
-    filters = request["filters"]
-    keywords = [word.lower() for word in re.findall(r"[A-Za-z0-9]+", request["query"])]
-    return {
-        "task": request["query"],
-        "keywords": keywords,
-        "preferredFormats": filters.get("format", []),
-        "requiredColumns": [],
-        "sources": filters.get("source", []),
-        "licenses": filters.get("license", []),
-        "recency": "any",
-        "mode": "keyword",
-        "confidence": None,
-    }
 
 
 def _request_id(event: dict[str, Any], context: Any) -> str:

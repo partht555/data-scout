@@ -6,7 +6,8 @@ import json
 import re
 from typing import Any
 
-from .handler import RequestValidationError, _keyword_intent, _parse_body, _request_id, _response, _validate_request
+from .handler import RequestValidationError, _parse_body, _request_id, _response, _validate_request
+from .intent_parser import interpret_request
 from .mock_repository import list_datasets
 
 
@@ -30,7 +31,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         200,
         {
             "query": request["query"],
-            "interpretedIntent": _keyword_intent(request),
+            "interpretedIntent": interpret_request(request),
             "results": results,
             "nextCursor": None,
         },
