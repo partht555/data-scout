@@ -150,6 +150,7 @@ def handler(event: dict, context) -> dict:
         "errors": errors,
         "lastPageFetched": last_page_fetched,
         "hitEndOfResults": hit_end_of_results,
+        "nextCursor": None,
     }
     logger.info(json.dumps({"event": "crawl_end", "runId": run_id, **outcome}))
     return outcome
